@@ -26,12 +26,19 @@ export async function GET() {
         .replace(/\s+/g, '');
     };
 
+    const addStream = (name, url) => {
+      if (!streamsMap.has(name)) {
+        streamsMap.set(name, new Set());
+      }
+      streamsMap.get(name).add(url);
+    };
+
     const extractStream = (stream) => {
       const nickName = (stream.nickName || '').replace(/\s/g, '');
       const url = stream.playStreamAddress2 || stream.playStreamAddress;
       if (stream.liveStatus === 2 && nickName === '卫星Live' && url && url.length > 15) {
         const name = formatName(stream.houseName || stream.nickName);
-        streamsMap.set(name, url);
+        addStream(name, url);
       }
     };
 
@@ -51,17 +58,19 @@ export async function GET() {
             
         const name = formatName(rawName);
         const url = match.videoUrl.replace('_autoChange', '_1080p');
-        streamsMap.set(name, url);
+        addStream(name, url);
       }
 
       (item.reservedAnchors || []).forEach(extractStream);
       (item.anchorAppointmentVoList || []).forEach(extractStream);
     });
 
-    // TXT 格式开头加上分类组名
     let txtContent = '原声(直连),#genre#\n';
-    streamsMap.forEach((url, name) => {
-      txtContent += `${name},${url}\n`;
+    // 遍历 Map，输出所有线路
+    streamsMap.forEach((urls, name) => {
+      urls.forEach(url => {
+        txtContent += `${name},${url}\n`;
+      });
     });
 
     return new NextResponse(txtContent, {
