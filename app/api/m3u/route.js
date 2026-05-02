@@ -1,5 +1,70 @@
 import { NextResponse } from 'next/server';
 
+// 豪华版联赛名称替换字典
+const leagueMap = {
+  // 🏀 篮球
+  "美国职业篮球联赛": "NBA",
+  "美国女子职业篮球联赛": "WNBA",
+  "中国男子篮球联赛": "CBA",
+  "中国女子篮球联赛": "WCBA",
+  "中国台湾男子超级篮球联赛": "SBL",
+  "中国台湾女子超级篮球联赛": "WSBL",
+  "中国台湾P. LEAGUE+": "PLG",
+  "中国台湾T1联赛": "T1",
+  "日本B1篮球联赛": "B1",
+  "日本B2篮球联赛": "B2",
+  "韩国职业篮球联赛": "KBL",
+  "欧洲篮球联赛": "欧篮联",
+  "菲律宾MPBL": "菲MPBL",
+  "澳大利亚国家篮球联赛": "NBL",
+
+  // ⚽ 欧洲足球
+  "英格兰超级联赛": "英超",
+  "西班牙足球甲级联赛": "西甲",
+  "意大利甲级联赛": "意甲",
+  "德国甲级联赛": "德甲",
+  "法国甲级联赛": "法甲",
+  "英格兰冠军联赛": "英冠",
+  "德国乙级联赛": "德乙",
+  "法国乙级联赛": "法乙",
+  "葡萄牙超级联赛": "葡超",
+  "荷兰足球甲级联赛": "荷甲",
+  "欧洲冠军联赛": "欧冠",
+  "欧足联欧洲联赛": "欧联",
+  "欧足联欧洲足协杯": "欧协联",
+  "俄罗斯超级联赛": "俄超",
+  "俄罗斯女子超级联赛": "俄女超",
+
+  // ⚽ 亚洲及美洲足球
+  "中国足球协会超级联赛": "中超",
+  "中国足球协会甲级联赛": "中甲",
+  "中国足球协会乙级联赛": "中乙",
+  "中国足球协会会员协会冠军联赛": "中冠",
+  "中国女子足球超级联赛": "女超",
+  "中国女子足球甲级联赛": "女甲",
+  "韩国职业甲级足球联赛": "韩K联",
+  "日本职业足球甲级联赛（J1）": "日职联",
+  "日本职业足球乙级联赛（J2）": "日职乙",
+  "澳大利亚足球超级联赛": "澳超",
+  "亚足联冠军联赛": "亚冠",
+  "亚冠二级联赛": "亚冠2",
+  "美国职业大联盟联赛": "美职联",
+  "巴西甲级联赛": "巴甲",
+  "阿根廷甲级联赛": "阿甲",
+  "沙特阿拉伯超级联赛": "沙特联",
+  "香港足球超级联赛": "港超",
+  "台湾木兰联赛": "木兰联赛",
+
+  // 🎮 综合及电竞
+  "俱乐部友谊赛": "友谊赛",
+  "国家队友谊赛": "友谊赛",
+  "英雄联盟": "LOL",
+  "王者荣耀": "王者",
+  "绝地求生": "PUBG",
+  "刀塔2": "DOTA2",
+  "无畏契约": "瓦罗兰特"
+};
+
 export async function GET() {
   const apiUrl = 'https://urgetwg35nbhghj439b99.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh';
 
@@ -16,8 +81,6 @@ export async function GET() {
     }
 
     const json = await response.json();
-    
-    // 使用 Map 存储：频道名 -> Set(包含多条不同的链接)
     const streamsMap = new Map();
 
     const formatName = (rawName) => {
@@ -28,7 +91,6 @@ export async function GET() {
         .replace(/\s+/g, '');
     };
 
-    // 辅助函数：将 URL 存入对应名称的集合中
     const addStream = (name, url) => {
       if (!streamsMap.has(name)) {
         streamsMap.set(name, new Set());
@@ -52,17 +114,19 @@ export async function GET() {
     (json.data?.matchLivestreams || []).forEach(item => {
       const match = item.result?.match;
       if (match && match.videoUrl && match.videoUrl.length > 15) {
-        const compName = match.competition?.name || '';
+        const rawCompName = match.competition?.name || '';
+        // 精准替换联赛简称
+        const compName = leagueMap[rawCompName] || rawCompName;
+        
         const homeName = match.homeTeam?.name || '';
         const awayName = match.awayTeam?.name || '';
+        
         let rawName = (compName && homeName && awayName) 
             ? `${compName} | ${homeName} VS ${awayName}` 
             : (match.name || '官方赛事');
             
         const name = formatName(rawName);
         const url = match.videoUrl.replace('_autoChange', '_1080p');
-        
-        // 存入官方 1080p 线路
         addStream(name, url);
       }
 
@@ -71,7 +135,6 @@ export async function GET() {
     });
 
     let m3uContent = '#EXTM3U\n';
-    // 遍历 Map，输出所有线路
     streamsMap.forEach((urls, name) => {
       urls.forEach(url => {
         m3uContent += `#EXTINF:-1 group-title="原声(直连)",${name}\n${url}\n`;
