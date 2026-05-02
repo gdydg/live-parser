@@ -58,7 +58,8 @@ export async function GET() {
       (item.anchorAppointmentVoList || []).forEach(extractStream);
     });
 
-    let txtContent = '';
+    // TXT 格式开头加上分类组名
+    let txtContent = '原声(直连),#genre#\n';
     streamsMap.forEach((url, name) => {
       txtContent += `${name},${url}\n`;
     });
