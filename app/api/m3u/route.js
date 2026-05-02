@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const response = await fetch(apiUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
       cache: 'no-store'
     });
@@ -16,30 +16,61 @@ export async function GET() {
     }
 
     const json = await response.json();
+    
+    // 用于存放所有符合条件的最终直播源
+    const allExtractedStreams = [];
 
-    // 提取并过滤直播流
-    const activeStreams = (json.data?.ongoingLivestreams || []).filter(stream => {
-      // 兼容官方数据中可能带空格的 "卫星 Live" 和 "卫星Live"
+    // ==========================================
+    // 逻辑 1：提取 ongoingLivestreams 中的“卫星Live”
+    // ==========================================
+    const anchorStreams = (json.data?.ongoingLivestreams || []).filter(stream => {
       const nickName = (stream.nickName || '').replace(/\s/g, '');
       return stream.liveStatus === 2 && nickName === '卫星Live';
     });
 
-    // 频道名称格式化函数
     const formatName = (rawName) => {
       if (!rawName) return '未命名直播';
       return rawName
-        .replace(/\s*\|\s*/g, ':')      // 将 " | " 替换为 ":"
-        .replace(/\s*VS\s*/gi, '-VS-')  // 将 " VS " 替换为 "-VS-"
-        .replace(/\s+/g, '');           // 去除其余所有空格
+        .replace(/\s*\|\s*/g, ':')
+        .replace(/\s*VS\s*/gi, '-VS-')
+        .replace(/\s+/g, '');
     };
 
-    let m3uContent = '#EXTM3U\n';
-    activeStreams.forEach(stream => {
+    anchorStreams.forEach(stream => {
       const name = formatName(stream.houseName || stream.nickName);
       const streamUrl = stream.playStreamAddress2 || stream.playStreamAddress;
       if (streamUrl) {
-        m3uContent += `#EXTINF:-1,${name}\n${streamUrl}\n`;
+        allExtractedStreams.push({ name, url: streamUrl });
       }
+    });
+
+    // ==========================================
+    // 逻辑 2：提取 matchLivestreams 中的官方赛事
+    // ==========================================
+    const matchStreams = json.data?.matchLivestreams || [];
+    matchStreams.forEach(item => {
+      const match = item.result?.match;
+      if (match && match.videoUrl) {
+        const compName = match.competition?.name || '未知联赛';
+        const homeName = match.homeTeam?.name || '未知主队';
+        const awayName = match.awayTeam?.name || '未知客队';
+        
+        // 拼接名称格式，例如：西澳大利亚州甲级联赛:金斯利西部-VS-苏比亚科
+        const name = `${compName}:${homeName}-VS-${awayName}`.replace(/\s+/g, '');
+        
+        // 替换清晰度标识为 1080p
+        const streamUrl = match.videoUrl.replace('_autoChange.m3u8', '_1080p.m3u8');
+        
+        allExtractedStreams.push({ name, url: streamUrl });
+      }
+    });
+
+    // ==========================================
+    // 生成最终的 M3U 内容
+    // ==========================================
+    let m3uContent = '#EXTM3U\n';
+    allExtractedStreams.forEach(stream => {
+      m3uContent += `#EXTINF:-1,${stream.name}\n${stream.url}\n`;
     });
 
     return new NextResponse(m3uContent, {
