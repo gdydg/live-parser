@@ -16,6 +16,8 @@ export async function GET() {
     }
 
     const json = await response.json();
+    
+    // 使用 Map 存储：频道名 -> Set(包含多条不同的链接)
     const streamsMap = new Map();
 
     const formatName = (rawName) => {
@@ -26,12 +28,20 @@ export async function GET() {
         .replace(/\s+/g, '');
     };
 
+    // 辅助函数：将 URL 存入对应名称的集合中
+    const addStream = (name, url) => {
+      if (!streamsMap.has(name)) {
+        streamsMap.set(name, new Set());
+      }
+      streamsMap.get(name).add(url);
+    };
+
     const extractStream = (stream) => {
       const nickName = (stream.nickName || '').replace(/\s/g, '');
       const url = stream.playStreamAddress2 || stream.playStreamAddress;
       if (stream.liveStatus === 2 && nickName === '卫星Live' && url && url.length > 15) {
         const name = formatName(stream.houseName || stream.nickName);
-        streamsMap.set(name, url);
+        addStream(name, url);
       }
     };
 
@@ -51,7 +61,9 @@ export async function GET() {
             
         const name = formatName(rawName);
         const url = match.videoUrl.replace('_autoChange', '_1080p');
-        streamsMap.set(name, url);
+        
+        // 存入官方 1080p 线路
+        addStream(name, url);
       }
 
       (item.reservedAnchors || []).forEach(extractStream);
@@ -59,9 +71,11 @@ export async function GET() {
     });
 
     let m3uContent = '#EXTM3U\n';
-    streamsMap.forEach((url, name) => {
-      // 强制添加 group-title 分组属性
-      m3uContent += `#EXTINF:-1 group-title="原声(直连)",${name}\n${url}\n`;
+    // 遍历 Map，输出所有线路
+    streamsMap.forEach((urls, name) => {
+      urls.forEach(url => {
+        m3uContent += `#EXTINF:-1 group-title="原声(直连)",${name}\n${url}\n`;
+      });
     });
 
     return new NextResponse(m3uContent, {
