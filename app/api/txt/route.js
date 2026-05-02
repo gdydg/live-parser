@@ -26,41 +26,36 @@ export async function GET() {
         .replace(/\s+/g, '');
     };
 
-    const processAnchors = (list) => {
-      (list || []).forEach(stream => {
-        const nickName = (stream.nickName || '').replace(/\s/g, '');
-        if (stream.liveStatus === 2 && nickName === '卫星Live') {
-          const name = formatName(stream.houseName || stream.nickName);
-          const url = stream.playStreamAddress2 || stream.playStreamAddress;
-          // 过滤掉假链接
-          if (url && url.length > 15) {
-            streamsMap.set(name, url);
-          }
-        }
-      });
+    const extractStream = (stream) => {
+      const nickName = (stream.nickName || '').replace(/\s/g, '');
+      const url = stream.playStreamAddress2 || stream.playStreamAddress;
+      if (stream.liveStatus === 2 && nickName === '卫星Live' && url && url.length > 15) {
+        const name = formatName(stream.houseName || stream.nickName);
+        streamsMap.set(name, url);
+      }
     };
 
-    processAnchors(json.data?.ongoingLivestreams);
-    processAnchors(json.data?.anchorLivestreams);
-    processAnchors(json.data?.streamingAnchorRanking);
+    ['ongoingLivestreams', 'anchorLivestreams', 'streamingAnchorRanking'].forEach(key => {
+      (json.data?.[key] || []).forEach(extractStream);
+    });
 
     (json.data?.matchLivestreams || []).forEach(item => {
       const match = item.result?.match;
-      // 过滤掉假链接
       if (match && match.videoUrl && match.videoUrl.length > 15) {
         const compName = match.competition?.name || '';
         const homeName = match.homeTeam?.name || '';
         const awayName = match.awayTeam?.name || '';
-        
         let rawName = (compName && homeName && awayName) 
             ? `${compName} | ${homeName} VS ${awayName}` 
             : (match.name || '官方赛事');
-        
+            
         const name = formatName(rawName);
         const url = match.videoUrl.replace('_autoChange', '_1080p');
-        
         streamsMap.set(name, url);
       }
+
+      (item.reservedAnchors || []).forEach(extractStream);
+      (item.anchorAppointmentVoList || []).forEach(extractStream);
     });
 
     let txtContent = '';
