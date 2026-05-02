@@ -6,17 +6,35 @@ export async function GET() {
   try {
     const response = await fetch(apiUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
       cache: 'no-store'
     });
 
+    if (!response.ok) {
+       return new NextResponse(`上游请求失败，状态码: ${response.status}`, { status: response.status });
+    }
+
     const json = await response.json();
-    const activeStreams = json.data?.ongoingLivestreams?.filter(stream => stream.liveStatus === 2) || [];
+
+    // 提取并过滤直播流
+    const activeStreams = (json.data?.ongoingLivestreams || []).filter(stream => {
+      const nickName = (stream.nickName || '').replace(/\s/g, '');
+      return stream.liveStatus === 2 && nickName === '卫星Live';
+    });
+
+    // 频道名称格式化函数
+    const formatName = (rawName) => {
+      if (!rawName) return '未命名直播';
+      return rawName
+        .replace(/\s*\|\s*/g, ':')
+        .replace(/\s*VS\s*/gi, '-VS-')
+        .replace(/\s+/g, '');
+    };
 
     let txtContent = '';
     activeStreams.forEach(stream => {
-      const name = stream.houseName || stream.nickName || '未命名直播';
+      const name = formatName(stream.houseName || stream.nickName);
       const streamUrl = stream.playStreamAddress2 || stream.playStreamAddress;
       if (streamUrl) {
         txtContent += `${name},${streamUrl}\n`;
