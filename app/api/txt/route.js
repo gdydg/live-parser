@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const response = await fetch(apiUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
       cache: 'no-store'
     });
@@ -16,14 +16,14 @@ export async function GET() {
     }
 
     const json = await response.json();
+    const allExtractedStreams = [];
 
-    // 提取并过滤直播流
-    const activeStreams = (json.data?.ongoingLivestreams || []).filter(stream => {
+    // 1：提取 ongoingLivestreams 中的“卫星Live”
+    const anchorStreams = (json.data?.ongoingLivestreams || []).filter(stream => {
       const nickName = (stream.nickName || '').replace(/\s/g, '');
       return stream.liveStatus === 2 && nickName === '卫星Live';
     });
 
-    // 频道名称格式化函数
     const formatName = (rawName) => {
       if (!rawName) return '未命名直播';
       return rawName
@@ -32,13 +32,34 @@ export async function GET() {
         .replace(/\s+/g, '');
     };
 
-    let txtContent = '';
-    activeStreams.forEach(stream => {
+    anchorStreams.forEach(stream => {
       const name = formatName(stream.houseName || stream.nickName);
       const streamUrl = stream.playStreamAddress2 || stream.playStreamAddress;
       if (streamUrl) {
-        txtContent += `${name},${streamUrl}\n`;
+        allExtractedStreams.push({ name, url: streamUrl });
       }
+    });
+
+    // 2：提取 matchLivestreams 中的官方赛事
+    const matchStreams = json.data?.matchLivestreams || [];
+    matchStreams.forEach(item => {
+      const match = item.result?.match;
+      if (match && match.videoUrl) {
+        const compName = match.competition?.name || '未知联赛';
+        const homeName = match.homeTeam?.name || '未知主队';
+        const awayName = match.awayTeam?.name || '未知客队';
+        
+        const name = `${compName}:${homeName}-VS-${awayName}`.replace(/\s+/g, '');
+        const streamUrl = match.videoUrl.replace('_autoChange.m3u8', '_1080p.m3u8');
+        
+        allExtractedStreams.push({ name, url: streamUrl });
+      }
+    });
+
+    // 3：生成最终的 TXT 内容
+    let txtContent = '';
+    allExtractedStreams.forEach(stream => {
+      txtContent += `${stream.name},${stream.url}\n`;
     });
 
     return new NextResponse(txtContent, {
