@@ -26,43 +26,48 @@ export async function GET() {
         .replace(/\s+/g, '');
     };
 
-    const processAnchors = (list) => {
-      (list || []).forEach(stream => {
-        const nickName = (stream.nickName || '').replace(/\s/g, '');
-        if (stream.liveStatus === 2 && nickName === '卫星Live') {
-          const name = formatName(stream.houseName || stream.nickName);
-          const url = stream.playStreamAddress2 || stream.playStreamAddress;
-          // 过滤掉 "https" 或 "www" 这种无效的占位符链接
-          if (url && url.length > 15) {
-            streamsMap.set(name, url);
-          }
-        }
-      });
+    // 提取流的辅助函数
+    const extractStream = (stream) => {
+      const nickName = (stream.nickName || '').replace(/\s/g, '');
+      const url = stream.playStreamAddress2 || stream.playStreamAddress;
+      
+      // 必须是卫星Live，且链接有效
+      if (stream.liveStatus === 2 && nickName === '卫星Live' && url && url.length > 15) {
+        const name = formatName(stream.houseName || stream.nickName);
+        streamsMap.set(name, url);
+      }
     };
 
-    processAnchors(json.data?.ongoingLivestreams);
-    processAnchors(json.data?.anchorLivestreams);
-    processAnchors(json.data?.streamingAnchorRanking);
+    // 1. 扫荡三个基础主播数组
+    ['ongoingLivestreams', 'anchorLivestreams', 'streamingAnchorRanking'].forEach(key => {
+      (json.data?.[key] || []).forEach(extractStream);
+    });
 
+    // 2. 扫荡 matchLivestreams
     (json.data?.matchLivestreams || []).forEach(item => {
+      // 2.1 检查比赛本身的官方流 (替换 1080p)
       const match = item.result?.match;
-      // 增加长度判断 > 15，拦截掉未开赛的假链接 "https"
       if (match && match.videoUrl && match.videoUrl.length > 15) {
         const compName = match.competition?.name || '';
         const homeName = match.homeTeam?.name || '';
         const awayName = match.awayTeam?.name || '';
-        
         let rawName = (compName && homeName && awayName) 
             ? `${compName} | ${homeName} VS ${awayName}` 
             : (match.name || '官方赛事');
-        
+            
         const name = formatName(rawName);
         const url = match.videoUrl.replace('_autoChange', '_1080p');
-        
         streamsMap.set(name, url);
       }
+
+      // 2.2 检查挂载在比赛下面的预约主播 (reservedAnchors)
+      (item.reservedAnchors || []).forEach(extractStream);
+      
+      // 2.3 检查挂载在比赛下面的预约主播 (anchorAppointmentVoList)
+      (item.anchorAppointmentVoList || []).forEach(extractStream);
     });
 
+    // 生成最终的 M3U
     let m3uContent = '#EXTM3U\n';
     streamsMap.forEach((url, name) => {
       m3uContent += `#EXTINF:-1,${name}\n${url}\n`;
