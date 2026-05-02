@@ -26,26 +26,20 @@ export async function GET() {
         .replace(/\s+/g, '');
     };
 
-    // 提取流的辅助函数
     const extractStream = (stream) => {
       const nickName = (stream.nickName || '').replace(/\s/g, '');
       const url = stream.playStreamAddress2 || stream.playStreamAddress;
-      
-      // 必须是卫星Live，且链接有效
       if (stream.liveStatus === 2 && nickName === '卫星Live' && url && url.length > 15) {
         const name = formatName(stream.houseName || stream.nickName);
         streamsMap.set(name, url);
       }
     };
 
-    // 1. 扫荡三个基础主播数组
     ['ongoingLivestreams', 'anchorLivestreams', 'streamingAnchorRanking'].forEach(key => {
       (json.data?.[key] || []).forEach(extractStream);
     });
 
-    // 2. 扫荡 matchLivestreams
     (json.data?.matchLivestreams || []).forEach(item => {
-      // 2.1 检查比赛本身的官方流 (替换 1080p)
       const match = item.result?.match;
       if (match && match.videoUrl && match.videoUrl.length > 15) {
         const compName = match.competition?.name || '';
@@ -60,17 +54,14 @@ export async function GET() {
         streamsMap.set(name, url);
       }
 
-      // 2.2 检查挂载在比赛下面的预约主播 (reservedAnchors)
       (item.reservedAnchors || []).forEach(extractStream);
-      
-      // 2.3 检查挂载在比赛下面的预约主播 (anchorAppointmentVoList)
       (item.anchorAppointmentVoList || []).forEach(extractStream);
     });
 
-    // 生成最终的 M3U
     let m3uContent = '#EXTM3U\n';
     streamsMap.forEach((url, name) => {
-      m3uContent += `#EXTINF:-1,${name}\n${url}\n`;
+      // 强制添加 group-title 分组属性
+      m3uContent += `#EXTINF:-1 group-title="原声(直连)",${name}\n${url}\n`;
     });
 
     return new NextResponse(m3uContent, {
