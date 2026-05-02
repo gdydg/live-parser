@@ -16,13 +16,7 @@ export async function GET() {
     }
 
     const json = await response.json();
-    const allExtractedStreams = [];
-
-    // 1：提取 ongoingLivestreams 中的“卫星Live”
-    const anchorStreams = (json.data?.ongoingLivestreams || []).filter(stream => {
-      const nickName = (stream.nickName || '').replace(/\s/g, '');
-      return stream.liveStatus === 2 && nickName === '卫星Live';
-    });
+    const streamsMap = new Map();
 
     const formatName = (rawName) => {
       if (!rawName) return '未命名直播';
@@ -32,34 +26,46 @@ export async function GET() {
         .replace(/\s+/g, '');
     };
 
-    anchorStreams.forEach(stream => {
-      const name = formatName(stream.houseName || stream.nickName);
-      const streamUrl = stream.playStreamAddress2 || stream.playStreamAddress;
-      if (streamUrl) {
-        allExtractedStreams.push({ name, url: streamUrl });
-      }
-    });
+    const processAnchors = (list) => {
+      (list || []).forEach(stream => {
+        const nickName = (stream.nickName || '').replace(/\s/g, '');
+        if (stream.liveStatus === 2 && nickName === '卫星Live') {
+          const name = formatName(stream.houseName || stream.nickName);
+          const url = stream.playStreamAddress2 || stream.playStreamAddress;
+          // 过滤掉假链接
+          if (url && url.length > 15) {
+            streamsMap.set(name, url);
+          }
+        }
+      });
+    };
 
-    // 2：提取 matchLivestreams 中的官方赛事
-    const matchStreams = json.data?.matchLivestreams || [];
-    matchStreams.forEach(item => {
+    processAnchors(json.data?.ongoingLivestreams);
+    processAnchors(json.data?.anchorLivestreams);
+    processAnchors(json.data?.streamingAnchorRanking);
+
+    (json.data?.matchLivestreams || []).forEach(item => {
       const match = item.result?.match;
-      if (match && match.videoUrl) {
-        const compName = match.competition?.name || '未知联赛';
-        const homeName = match.homeTeam?.name || '未知主队';
-        const awayName = match.awayTeam?.name || '未知客队';
+      // 过滤掉假链接
+      if (match && match.videoUrl && match.videoUrl.length > 15) {
+        const compName = match.competition?.name || '';
+        const homeName = match.homeTeam?.name || '';
+        const awayName = match.awayTeam?.name || '';
         
-        const name = `${compName}:${homeName}-VS-${awayName}`.replace(/\s+/g, '');
-        const streamUrl = match.videoUrl.replace('_autoChange.m3u8', '_1080p.m3u8');
+        let rawName = (compName && homeName && awayName) 
+            ? `${compName} | ${homeName} VS ${awayName}` 
+            : (match.name || '官方赛事');
         
-        allExtractedStreams.push({ name, url: streamUrl });
+        const name = formatName(rawName);
+        const url = match.videoUrl.replace('_autoChange', '_1080p');
+        
+        streamsMap.set(name, url);
       }
     });
 
-    // 3：生成最终的 TXT 内容
     let txtContent = '';
-    allExtractedStreams.forEach(stream => {
-      txtContent += `${stream.name},${stream.url}\n`;
+    streamsMap.forEach((url, name) => {
+      txtContent += `${name},${url}\n`;
     });
 
     return new NextResponse(txtContent, {
