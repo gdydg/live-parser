@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 
-// 豪华版联赛名称替换字典
 const leagueMap = {
   "美国职业篮球联赛": "NBA",
   "美国女子职业篮球联赛": "WNBA",
@@ -59,21 +58,22 @@ const leagueMap = {
 };
 
 export async function GET() {
-  const apiUrl = 'https://urgetwg35nbhghj439b99.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh';
+  const apiUrls = [
+    'https://urgetwg35nbhghj439b99.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh',
+    'https://uwnyqabbrnve9xkwrhb01.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh'
+  ];
 
   try {
-    const response = await fetch(apiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      cache: 'no-store'
-    });
+    const fetchPromises = apiUrls.map(url =>
+      fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        cache: 'no-store'
+      })
+      .then(res => (res.ok ? res.json() : null))
+      .catch(() => null)
+    );
 
-    if (!response.ok) {
-       return new NextResponse(`上游请求失败，状态码: ${response.status}`, { status: response.status });
-    }
-
-    const json = await response.json();
+    const results = await Promise.all(fetchPromises);
     const streamsMap = new Map();
 
     const formatName = (rawName) => {
@@ -100,30 +100,34 @@ export async function GET() {
       }
     };
 
-    ['ongoingLivestreams', 'anchorLivestreams', 'streamingAnchorRanking'].forEach(key => {
-      (json.data?.[key] || []).forEach(extractStream);
-    });
+    results.forEach(json => {
+      if (!json || !json.data) return;
 
-    (json.data?.matchLivestreams || []).forEach(item => {
-      const match = item.result?.match;
-      if (match && match.videoUrl && match.videoUrl.length > 15) {
-        const rawCompName = match.competition?.name || '';
-        const compName = leagueMap[rawCompName] || rawCompName;
-        
-        const homeName = match.homeTeam?.name || '';
-        const awayName = match.awayTeam?.name || '';
-        
-        let rawName = (compName && homeName && awayName) 
-            ? `${compName} | ${homeName} VS ${awayName}` 
-            : (match.name || '官方赛事');
-            
-        const name = formatName(rawName);
-        const url = match.videoUrl.replace('_autoChange', '_1080p');
-        addStream(name, url);
-      }
+      ['ongoingLivestreams', 'anchorLivestreams', 'streamingAnchorRanking'].forEach(key => {
+        (json.data[key] || []).forEach(extractStream);
+      });
 
-      (item.reservedAnchors || []).forEach(extractStream);
-      (item.anchorAppointmentVoList || []).forEach(extractStream);
+      (json.data.matchLivestreams || []).forEach(item => {
+        const match = item.result?.match;
+        if (match && match.videoUrl && match.videoUrl.length > 15) {
+          const rawCompName = match.competition?.name || '';
+          const compName = leagueMap[rawCompName] || rawCompName;
+          
+          const homeName = match.homeTeam?.name || '';
+          const awayName = match.awayTeam?.name || '';
+          
+          let rawName = (compName && homeName && awayName) 
+              ? `${compName} | ${homeName} VS ${awayName}` 
+              : (match.name || '官方赛事');
+              
+          const name = formatName(rawName);
+          const url = match.videoUrl.replace('_autoChange', '_1080p');
+          addStream(name, url);
+        }
+
+        (item.reservedAnchors || []).forEach(extractStream);
+        (item.anchorAppointmentVoList || []).forEach(extractStream);
+      });
     });
 
     let txtContent = '原声(直连),#genre#\n';
