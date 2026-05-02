@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 
 // 豪华版联赛名称替换字典
 const leagueMap = {
-  // 🏀 篮球
   "美国职业篮球联赛": "NBA",
   "美国女子职业篮球联赛": "WNBA",
   "中国男子篮球联赛": "CBA",
@@ -17,8 +16,6 @@ const leagueMap = {
   "欧洲篮球联赛": "欧篮联",
   "菲律宾MPBL": "菲MPBL",
   "澳大利亚国家篮球联赛": "NBL",
-
-  // ⚽ 欧洲足球
   "英格兰超级联赛": "英超",
   "西班牙足球甲级联赛": "西甲",
   "意大利甲级联赛": "意甲",
@@ -34,8 +31,6 @@ const leagueMap = {
   "欧足联欧洲足协杯": "欧协联",
   "俄罗斯超级联赛": "俄超",
   "俄罗斯女子超级联赛": "俄女超",
-
-  // ⚽ 亚洲及美洲足球
   "中国足球协会超级联赛": "中超",
   "中国足球协会甲级联赛": "中甲",
   "中国足球协会乙级联赛": "中乙",
@@ -54,8 +49,6 @@ const leagueMap = {
   "沙特阿拉伯超级联赛": "沙特联",
   "香港足球超级联赛": "港超",
   "台湾木兰联赛": "木兰联赛",
-
-  // 🎮 综合及电竞
   "俱乐部友谊赛": "友谊赛",
   "国家队友谊赛": "友谊赛",
   "英雄联盟": "LOL",
@@ -66,21 +59,26 @@ const leagueMap = {
 };
 
 export async function GET() {
-  const apiUrl = 'https://urgetwg35nbhghj439b99.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh';
+  // 定义所有需要抓取的接口列表
+  const apiUrls = [
+    'https://urgetwg35nbhghj439b99.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh',
+    'https://uwnyqabbrnve9xkwrhb01.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh'
+  ];
 
   try {
-    const response = await fetch(apiUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      cache: 'no-store'
-    });
+    // 并发请求所有接口，提高速度
+    const fetchPromises = apiUrls.map(url =>
+      fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        cache: 'no-store'
+      })
+      .then(res => (res.ok ? res.json() : null))
+      .catch(() => null) // 忽略单个接口崩溃的情况
+    );
 
-    if (!response.ok) {
-       return new NextResponse(`上游请求失败，状态码: ${response.status}`, { status: response.status });
-    }
+    // 等待所有请求完成
+    const results = await Promise.all(fetchPromises);
 
-    const json = await response.json();
     const streamsMap = new Map();
 
     const formatName = (rawName) => {
@@ -107,31 +105,35 @@ export async function GET() {
       }
     };
 
-    ['ongoingLivestreams', 'anchorLivestreams', 'streamingAnchorRanking'].forEach(key => {
-      (json.data?.[key] || []).forEach(extractStream);
-    });
+    // 遍历所有接口返回的数据进行解析
+    results.forEach(json => {
+      if (!json || !json.data) return;
 
-    (json.data?.matchLivestreams || []).forEach(item => {
-      const match = item.result?.match;
-      if (match && match.videoUrl && match.videoUrl.length > 15) {
-        const rawCompName = match.competition?.name || '';
-        // 精准替换联赛简称
-        const compName = leagueMap[rawCompName] || rawCompName;
-        
-        const homeName = match.homeTeam?.name || '';
-        const awayName = match.awayTeam?.name || '';
-        
-        let rawName = (compName && homeName && awayName) 
-            ? `${compName} | ${homeName} VS ${awayName}` 
-            : (match.name || '官方赛事');
-            
-        const name = formatName(rawName);
-        const url = match.videoUrl.replace('_autoChange', '_1080p');
-        addStream(name, url);
-      }
+      ['ongoingLivestreams', 'anchorLivestreams', 'streamingAnchorRanking'].forEach(key => {
+        (json.data[key] || []).forEach(extractStream);
+      });
 
-      (item.reservedAnchors || []).forEach(extractStream);
-      (item.anchorAppointmentVoList || []).forEach(extractStream);
+      (json.data.matchLivestreams || []).forEach(item => {
+        const match = item.result?.match;
+        if (match && match.videoUrl && match.videoUrl.length > 15) {
+          const rawCompName = match.competition?.name || '';
+          const compName = leagueMap[rawCompName] || rawCompName;
+          
+          const homeName = match.homeTeam?.name || '';
+          const awayName = match.awayTeam?.name || '';
+          
+          let rawName = (compName && homeName && awayName) 
+              ? `${compName} | ${homeName} VS ${awayName}` 
+              : (match.name || '官方赛事');
+              
+          const name = formatName(rawName);
+          const url = match.videoUrl.replace('_autoChange', '_1080p');
+          addStream(name, url);
+        }
+
+        (item.reservedAnchors || []).forEach(extractStream);
+        (item.anchorAppointmentVoList || []).forEach(extractStream);
+      });
     });
 
     let m3uContent = '#EXTM3U\n';
