@@ -59,21 +59,50 @@ const leagueMap = {
 };
 
 export async function GET() {
-  // 定义所有需要抓取的接口列表
-  const apiUrls = [
-    'https://urgetwg35nbhghj439b99.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh',
-    'https://uwnyqabbrnve9xkwrhb01.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh'
+  // 定义接口配置数组，为每个接口带上专属的绕盾 Cookie 和 Headers
+  const apiConfigs = [
+    {
+      url: 'https://urgetwg35nbhghj439b99.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh',
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7,id;q=0.6',
+        'Cache-Control': 'max-age=0',
+        'Cookie': '_ooo_0d6574ad=d1dKQ0E0SlNTMWpnTW9wdmN3Mi0zalF4R0FSUXh1MQ==; _quantum_ray_seq_21ef=44dc3b4c-ca68-4ac3-9aff-affc89d37dc1; _cmd_fd7a7ce6=M25FSlE3YnlxRXAxTURQVjdONTRqMW5QTzN1eVpBMw==; _cmd_qeO_bm=ff730d6ffc3772fd; _cmd_nel_bm=6f438573531a4862',
+        'Referer': 'https://urgetwg35nbhghj439b99.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
+      }
+    },
+    {
+      url: 'https://uwnyqabbrnve9xkwrhb01.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh',
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7,id;q=0.6',
+        'Cache-Control': 'max-age=0',
+        'Cookie': '_cmd_qeO_bm=ff730d6ffc3772fd; _cmd_nel_bm=6f438573531a4862; _ooo_0d6574ad=LSQxMUYkMnNhNlRQU1hBM0NqbTc4STNlS0QxJDUwK0czNmdiOXYkRnM0NTV1SHVKTTlzQjY5NGdiZzdrWE85; _quantum_ray_seq_21ef=b5f0d93d-6e43-48f5-96b0-09beef848515; _cmd_fd7a7ce6=MS1oLU9lMnZmeGc1Q1MzJDJkOGRKaHczYlc0clNiNA==',
+        'Referer': 'https://uwnyqabbrnve9xkwrhb01.k8v4dh4.app/api/c5/business/livehouse/index?lang=zh',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
+      }
+    }
   ];
 
   try {
-    // 并发请求所有接口，提高速度
-    const fetchPromises = apiUrls.map(url =>
-      fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+    // 并发请求所有接口
+    const fetchPromises = apiConfigs.map(config =>
+      fetch(config.url, {
+        headers: config.headers,
         cache: 'no-store'
       })
-      .then(res => (res.ok ? res.json() : null))
-      .catch(() => null) // 忽略单个接口崩溃的情况
+      .then(res => {
+        if (!res.ok) {
+          console.warn(`[${config.url}] HTTP 状态码异常:`, res.status);
+          return null;
+        }
+        return res.json();
+      })
+      .catch((err) => {
+        console.error(`[${config.url}] 请求崩溃:`, err.message);
+        return null; // 忽略单个接口崩溃的情况
+      })
     );
 
     // 等待所有请求完成
